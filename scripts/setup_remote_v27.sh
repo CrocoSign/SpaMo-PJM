@@ -80,14 +80,14 @@ dl(FEAT, "splits/split_train.csv",           "data/splits/split_train.csv")
 dl(FEAT, "splits/split_val.csv",             "data/splits/split_val.csv")
 dl(FEAT, "splits/split_test.csv",            "data/splits/split_test.csv")
 
-CKPT = "croco-corp/spamo-pjm-checkpoints"
-dl(CKPT, "spamo_pjm_ms_dual_bleu5.36.ckpt", "checkpoints/spamo_pjm_ms_dual_bleu5.36.ckpt",
+CKPT = "CrocoSign/pjm-models"
+dl(CKPT, "checkpoints/spamo/spamo-pjm-phoenix-ms/epoch=00043-step=0129844-bleu4=5.36.ckpt", "checkpoints/spamo_pjm_ms_dual_bleu5.36.ckpt",
    repo_type="model")
 EOF
 
 echo "=== [5/5] Fix config paths + verify ==="
-for cfg in configs/finetune_v27_quad_xattn_from_upstream.yaml \
-           configs/finetune_v26_dual_paper_faithful_from_upstream.yaml \
+for cfg in configs/mod-spamo-pjm-phoenix-ms.yaml \
+           configs/spamo-pjm-phoenix-ms-test.yaml \
            configs/finetune_v28_dual_si_from_upstream.yaml \
            configs/finetune_v29_quad_xattn_si_from_upstream.yaml; do
     sed -i 's|/home/croco/.cache/huggingface/hub|'"$HOME"'/.cache/huggingface/hub|g' "$cfg"

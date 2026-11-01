@@ -1,13 +1,13 @@
-# v23b — paper-faithful PJM-MS finetune, English target, init z best(v22c, v22d).
-# Wszystkie hyperparams jak v22c/v22d (alpha=1.0, in_context=3, cosine+warmup, lr=6e-4 → 1e-4 dla finetune).
-# Tylko target language i splity różnią — i lr (niższy bo finetune z dobrego initu).
+# Mod-SpaMo (quad, cross-attention), SI split before the quality filter, from scratch (Flan-T5-XL base, no PJM init); the Mod-SpaMo scratch SI row (formerly v33).
 model:
   target: spamo.t5_slt.FlanT5SLT
   params:
-    lr: 1.0e-4               # niższy LR dla finetune (paper miał 6e-4 dla pretrainu)
+    lr: 1.0e-4
+    fusion_lr: 1.0e-5
+    new_stream_lr: 1.0e-4
     monitor: val/bleu4
     model_name: google/flan-t5-xl
-    cache_dir: /home/croco/.cache/huggingface/hub
+    cache_dir: null
     inter_hidden: 768
     input_size: 2048
     beam_size: 5
@@ -19,6 +19,7 @@ model:
     lora_r: 16
     lora_alpha: 32
     lora_dropout: 0.1
+    fusion_dropout: 0.3
     fusion_mode: joint
     warm_up_steps: 0
     cross_modal_align: true
@@ -26,17 +27,20 @@ model:
     alpha: 1.0
     use_in_context: true
     num_in_context: 3
-    keypoint_dim: 258         # quad — będzie pasować do v22d ckpt; v22c dual też się załaduje (compatible filter)
+    queue_size: 0
+    keypoint_dim: 258
     aux_input_size: 2048
     motion_input_size: 1024
+    lr_patience: 5
+    lr_scheduler_mode: max
     scheduler_config:
       target: spamo.lr_scheduler.LambdaWarmUpCosineScheduler
       params:
-        warm_up_steps: 4000
-        lr_min: 0.0
+        warm_up_steps: 1000
+        lr_min: 0.1
         lr_max: 1.0
         lr_start: 0.0
-        max_decay_steps: 80000
+        max_decay_steps: 40000
 
 lightning:
   callback:
@@ -45,12 +49,12 @@ lightning:
       params:
         logging_interval: step
   trainer:
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 4
     accelerator: gpu
     devices: 1
-    max_epochs: 100
+    max_epochs: 30
     gradient_clip_val: 1.0
-    check_val_every_n_epoch: 2
+    check_val_every_n_epoch: 3
     precision: bf16
 
 data:
@@ -62,12 +66,12 @@ data:
     motion_features_path: features/mae_feat_pjm.h5
     aux_features_path: features/hand_vit_feat_pjm.h5
     keypoint_features_path: features/mediapipe_feat_pjm.h5
-    texts_path: features/texts_eng.h5      # angielski target (jak v20b/v21)
+    texts_path: features/texts_eng.h5
     multilang_path: features/texts_multilang_pjm.h5
     target_lang: English
-    train_split_path: /home/croco/CrocoSign/data/split_train_ms.csv
-    val_split_path: /home/croco/CrocoSign/data/split_val_ms.csv
-    test_split_path: /home/croco/CrocoSign/data/split_test_ms.csv
+    train_split_path: data/splits/split_train.csv
+    val_split_path: data/splits/split_val.csv
+    test_split_path: data/splits/split_test.csv
     device: cuda
     max_frame_length: 512
     set_to_test: test

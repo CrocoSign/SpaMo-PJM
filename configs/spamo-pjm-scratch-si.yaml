@@ -1,19 +1,19 @@
+# SpaMo (dual), SI split before the quality filter, from scratch (Flan-T5-XL base, no PJM init); the SpaMo scratch SI row (formerly v32).
 model:
   target: spamo.t5_slt.FlanT5SLT
-
   params:
-    lr: 6.0e-4
-    fusion_lr: 6.0e-5        # 10x lower — fusion layers trained from scratch, main overfitting source
+    lr: 1.0e-4
+    fusion_lr: 1.0e-5
     monitor: val/bleu4
     model_name: google/flan-t5-xl
-    cache_dir: /home/croco/.cache/huggingface/hub
+    cache_dir: null
     inter_hidden: 768
     input_size: 2048
     beam_size: 5
     max_frame_len: 512
     max_txt_len: 64
     frame_sample_rate: 1
-    prompt: "Translate the given sentence into English."
+    prompt: "Translate the given sentence into {}."
     tuning_type: lora
     lora_r: 16
     lora_alpha: 32
@@ -24,8 +24,22 @@ model:
     cross_modal_align: true
     combined_loss: true
     alpha: 1.0
-    use_in_context: false
-    num_in_context: 0
+    use_in_context: true
+    num_in_context: 3
+    queue_size: 0
+    keypoint_dim: 0
+    aux_input_size: 0
+    motion_input_size: 1024
+    lr_patience: 5
+    lr_scheduler_mode: max
+    scheduler_config:
+      target: spamo.lr_scheduler.LambdaWarmUpCosineScheduler
+      params:
+        warm_up_steps: 1000
+        lr_min: 0.1
+        lr_max: 1.0
+        lr_start: 0.0
+        max_decay_steps: 40000
 
 lightning:
   callback:
@@ -34,25 +48,27 @@ lightning:
       params:
         logging_interval: step
   trainer:
-    accumulate_grad_batches: 2
+    accumulate_grad_batches: 4
     accelerator: gpu
     devices: 1
-    max_epochs: 60
+    max_epochs: 30
     gradient_clip_val: 1.0
-    check_val_every_n_epoch: 2
+    check_val_every_n_epoch: 3
     precision: bf16
 
 data:
   target: dataset.pjm.PJMDataModule
   params:
-    batch_size: 8
+    batch_size: 2
     num_workers: 4
     visual_features_path: features/vit_feat_pjm.h5
     motion_features_path: features/mae_feat_pjm.h5
     texts_path: features/texts_eng.h5
-    train_split_path: /home/croco/CrocoSign/data/split_train.csv
-    val_split_path: /home/croco/CrocoSign/data/split_val.csv
-    test_split_path: /home/croco/CrocoSign/data/split_test.csv
+    multilang_path: features/texts_multilang_pjm.h5
+    target_lang: English
+    train_split_path: data/splits/split_train.csv
+    val_split_path: data/splits/split_val.csv
+    test_split_path: data/splits/split_test.csv
     device: cuda
     max_frame_length: 512
     set_to_test: test

@@ -16,7 +16,7 @@ What we changed relative to upstream:
 - **Output language**: English. Flan-T5 turns Polish diacritics into unknown tokens, so Polish transcripts were machine-translated to English (DeepL) and used as targets. Optional in-context examples in Polish, French and Spanish (`scripts/translate_pjm_multilang.py`, NLLB-200 for French and Spanish).
 - **Mod-SpaMo** (`spamo/t5_slt.py`): extra hand-ViT and MediaPipe streams fused with the base ones by cross-attention with a zero-initialised output projection, so a model trained with two streams can be extended without changing the prefix length. Design notes: `docs/quad_fusion_xattn/`.
 - **Training/eval additions**: dropout (0.3) in the fusion module, ReduceLROnPlateau, optional frozen RoBERTa text encoder, ChrF and ROUGE-L on validation, test outputs dumped to a file and to W&B, `--tags` for W&B runs, Phoenix-2014T Lightning data module (`dataset/p14t_datamodule.py`) for pretraining on German Sign Language.
-- `configs/`: one YAML per experiment (v3 to v33), each with a header comment saying what it tests. `docs/runs_report_v3-v21.md` is our run log (in Polish).
+- `configs/`: the configs behind the paper rows are named like the checkpoint folders on Hugging Face (`spamo-pjm-scratch-ms.yaml`, `mod-spamo-pjm-phoenix-si.yaml`, ...; see Reproduce). `finetune.yaml` is the upstream PHOENIX-2014T config. Our earlier experiments (configs v3 to v29, their queue scripts and our run log) are not part of this branch; they are in the history at commit `05e8001`.
 
 ### Requirements
 
@@ -28,10 +28,10 @@ uv sync     # or: uv pip install -e .
 
 ### Data
 
-[croco-corp/pjm-data](https://huggingface.co/datasets/croco-corp/pjm-data) holds the features, splits, translations and videos of the filtered set (29,932 pairs); its folders are `checkpoints`, `splits`, `translations`, `vectors` and `videos`, plus `dialogs_data.csv`. [croco-corp/pjm-segments](https://huggingface.co/datasets/croco-corp/pjm-segments) holds the unfiltered segments (about 40k) as WebDataset shards. This repository uses the `vectors/` and `splits/` folders of pjm-data (as in `scripts/setup_remote_v27.sh`):
+[CrocoSign/pjm-data](https://huggingface.co/datasets/CrocoSign/pjm-data) holds the features, splits, translations and videos of the filtered set (29,928 pairs); its folders are `checkpoints`, `splits`, `translations`, `vectors` and `videos`, plus `dialogs_data.csv`. [CrocoSign/pjm-segments](https://huggingface.co/datasets/CrocoSign/pjm-segments) holds the unfiltered segments (about 40k) as WebDataset shards. This repository uses the `vectors/` and `splits/` folders of pjm-data (as in `scripts/setup_remote_v27.sh`):
 
 - `vectors/vit_feat_pjm.h5`, `mae_feat_pjm.h5`, `hand_vit_feat_pjm.h5`, `mediapipe_feat_pjm.h5`, `texts_eng.h5`, `texts_multilang_pjm.h5` -> put in `features/`
-- `splits/split_{train,val,test}.csv` (SI) and `split_{train,val,test}_ms.csv` (MS) -> put in `data/splits/`
+- `splits/split_{train,val,test}_ms.csv` (MS), `split_{train,val,test}_filtered.csv` (SI, used by the PHOENIX-2014T SI rows) and `split_{train,val,test}.csv` (SI before the quality filter, used by the SI rows from scratch) -> put in `data/splits/`
 
 To rebuild the features from the raw clips (mp4 files in the pjm-segments shards, or the `videos/` folder of pjm-data for the filtered set) use the extraction scripts above, for example:
 
@@ -47,43 +47,57 @@ python scripts/mae_features_for_pjm.py --save-dir features --overlap-size 8 --de
 `main.py` takes one or more YAML configs. `-e bleu` is the evaluation metric argument, as in upstream.
 
 ```bash
-python main.py -c configs/finetune_v31_quad_xattn_ms_scratch.yaml -e bleu --tags ms-split 4-stream
-python main.py -c configs/finetune_v31_quad_xattn_ms_scratch.yaml -e bleu --train False --test True --ckpt /path/to/checkpoint.ckpt
+python main.py -c configs/mod-spamo-pjm-scratch-ms.yaml -e bleu --tags ms-split 4-stream
+python main.py -c configs/mod-spamo-pjm-scratch-ms.yaml -e bleu --train False --test True --ckpt /path/to/checkpoint.ckpt
 ```
 
 Config families (see each file's header):
 
-- `finetune_v30..v33_*_scratch.yaml`: trained from scratch, MS and SI, two-stream ("dual", SpaMo) and four-stream cross-attention ("quad xattn", Mod-SpaMo).
-- `pretrain_v22*_phoenix*.yaml`, `finetune_v23*.yaml`: pretraining on Phoenix-2014T and fine-tuning on PJM (German Sign Language transfer).
-- `finetune_v26..v29_*_from_upstream.yaml`: continue from an earlier PJM-MS checkpoint trained with the upstream code.
-- `finetune_v3..v21_*.yaml`: earlier experiments (contrastive-only, hand-ViT, MediaPipe, plateau scheduler, generation loss, ...).
+- `{spamo,mod-spamo}-pjm-scratch-{ms,si}.yaml` (formerly `finetune_v30..v33_*_scratch.yaml`): trained from scratch, MS and SI, two-stream ("dual", SpaMo) and four-stream cross-attention ("quad xattn", Mod-SpaMo).
+- `mod-spamo-pjm-phoenix-{ms,si}.yaml` (formerly v27): Mod-SpaMo continued from the SpaMo PHOENIX-2014T checkpoints; `spamo-pjm-phoenix-{ms,si}-test.yaml` (formerly v26): this repository's two-stream model, used to test the SpaMo checkpoints trained with the upstream code.
 
-The configs contain absolute paths from our training machine (`/home/croco/...` for the Hugging Face cache and split files). Change them to your paths, or read `scripts/setup_remote_v27.sh`, which downloads the features and rewrites these paths for the v26 to v29 configs (it also installs uv and downloads Flan-T5-XL, about 11 GB).
+The configs read features from `features/` and splits from `data/splits/`, relative to the repository root, and use the default Hugging Face cache (`cache_dir: null`). The run scripts in `scripts/` (`queue_*.sh`, `setup_remote_*.sh`) are kept as we ran them: they contain the paths of our training machine, and two of them also start the discarded v28/v29 runs, whose configs are only in the history; `scripts/setup_remote_v27.sh` downloads the features and Flan-T5-XL (about 11 GB).
 
 ## Results
 
-Test set, one run per row, beam 5. Data: 29,932 video-sentence pairs, 150 signers. **MS** (multi-signer): test signers also appear in training. **SI** (signer-independent): test signers are never seen in training. Transfer source is the sign language used before PJM.
+Test set, one run per row, beam 5. Data: 29,928 video-sentence pairs, 151 signers. **MS** (multi-signer): test signers also appear in training. **SI** (signer-independent): test signers are never seen in training. Transfer source is the sign language used before PJM.
 
 | Model | Transfer source | Split | BLEU-4 | ROUGE-L | chrF | BLEURT |
 | --- | --- | --- | --- | --- | --- | --- |
 | SpaMo | PHOENIX-2014T | MS | 5.54 | 19.66 | 21.06 | 35.12 |
-| SpaMo | PHOENIX-2014T | SI | 0.53 | 6.94 | 10.06 | 29.42 |
+| SpaMo | PHOENIX-2014T | SI | 2.09 | 12.42 | 16.02 | 28.84 |
 | SpaMo | scratch | MS | 2.03 | 12.37 | 15.32 | 30.25 |
 | SpaMo | scratch | SI | 0.93 | 9.28 | 13.14 | 27.97 |
 | Mod-SpaMo | PHOENIX-2014T | MS | 5.06 | 18.86 | 20.94 | 34.30 |
-| Mod-SpaMo | PHOENIX-2014T | SI | 0.47 | 7.17 | 10.34 | 29.96 |
+| Mod-SpaMo | PHOENIX-2014T | SI | 2.06 | 12.26 | 16.17 | 27.86 |
 | Mod-SpaMo | scratch | MS | 1.56 | 11.92 | 14.50 | 30.42 |
 | Mod-SpaMo | scratch | SI | 1.17 | 10.12 | 14.14 | 27.67 |
 
-References are DeepL translations of the Polish transcripts. Mod-SpaMo did not improve on SpaMo. The Uni-Sign models in [Uni-Sign-PJM](https://github.com/crocosign/Uni-Sign-PJM) scored higher (best 7.61 BLEU-4 on MS), but they also started from ASL training, so the comparison is not architecture against architecture. SpaMo has no public weights usable for our comparison.
+References are DeepL translations of the Polish transcripts. The PHOENIX-2014T SI rows use the filtered SI split (9,776 of its 9,910 test clips; clips shorter than 16 feature frames are dropped), the SI rows from scratch the SI split before the quality filter. Mod-SpaMo did not improve on SpaMo. The Uni-Sign models in [Uni-Sign-PJM](https://github.com/crocosign/Uni-Sign-PJM) scored higher (best 8.61 BLEU-4 on MS), but they also started from ASL training, so the comparison is not architecture against architecture. SpaMo has no public weights usable for our comparison.
 
 ## Caveats
 
-- SI generalisation is very weak: SpaMo drops from 5.54 to 0.53 BLEU-4.
+- SI generalisation is weak: SpaMo drops from 5.54 to 2.09 BLEU-4.
 - Trained from scratch, all models end near 2 BLEU-4 or below.
 - Single runs; the epoch count differs per run and the best checkpoint was chosen on the validation set.
-- The mapping from results table rows to config files is not recorded anywhere, so we cannot tell you which YAML produced which cell of the table. The `from_upstream` configs start from an earlier PJM-MS checkpoint (dev BLEU-4 5.36). That 5.36 is a development-set number from the process, not a thesis result.
+- The Mod-SpaMo PHOENIX-2014T MS config and the `from_upstream` configs start from the SpaMo PHOENIX-2014T MS checkpoint (dev BLEU-4 5.36).
+- SpaMo and Mod-SpaMo decode with sampling (`do_sample=True`, `top_p=0.9`, beam 5), so a second test run gives slightly different numbers. An audit after the experiments found that LoRA ran in bf16; the rows were trained before that fix.
 - Training on TPU did not work for us (no static graph), so we trained on a single GPU.
+
+## Reproduce
+
+Checkpoints are in [CrocoSign/pjm-models](https://huggingface.co/CrocoSign/pjm-models) under `checkpoints/spamo/<folder>/`, and the test outputs and logs under `results/spamo/`. The SpaMo PHOENIX-2014T rows were trained with the upstream SpaMo code plus our changes in `upstream/spamo-pjm.patch` (apply to [eddie-euijun-hwang/SpaMo](https://github.com/eddie-euijun-hwang/SpaMo) at `aee7f8b`, with `git apply`), starting from the upstream PHOENIX-2014T checkpoint `spamo.ckpt`. Everything else uses this repository. Pass `-e bleu` when training: the default metric selects checkpoints and stops early on the wrong direction. Tests take `-c <test config> --train False --test True --ckpt <checkpoint> -e bleu`.
+
+| Row | Train | Test config | Checkpoint folder |
+| --- | --- | --- | --- |
+| SpaMo PHOENIX-2014T MS | upstream: `python main.py -c configs/spamo-pjm-phoenix-ms.yaml --ckpt spamo.ckpt -e bleu` | `spamo-pjm-phoenix-ms-test.yaml` | `spamo-pjm-phoenix-ms` |
+| SpaMo PHOENIX-2014T SI | upstream: `python main.py -c configs/spamo-pjm-phoenix-si.yaml --ckpt spamo.ckpt -e bleu --patience 5` | `spamo-pjm-phoenix-si-test.yaml` | `spamo-pjm-phoenix-si` |
+| Mod-SpaMo PHOENIX-2014T MS | `python main.py -c configs/mod-spamo-pjm-phoenix-ms.yaml --ckpt <SpaMo MS checkpoint> -e bleu` | same | `mod-spamo-pjm-phoenix-ms` |
+| Mod-SpaMo PHOENIX-2014T SI | `python main.py -c configs/mod-spamo-pjm-phoenix-si.yaml --ckpt <SpaMo SI checkpoint> -e bleu` | same | `mod-spamo-pjm-phoenix-si` |
+| SpaMo / Mod-SpaMo scratch MS | `python main.py -c configs/spamo-pjm-scratch-ms.yaml -e bleu` (Mod-SpaMo: `mod-spamo-pjm-scratch-ms.yaml`) | same | `spamo-pjm-scratch-ms`, `mod-spamo-pjm-scratch-ms` |
+| SpaMo / Mod-SpaMo scratch SI | `python main.py -c configs/spamo-pjm-scratch-si.yaml -e bleu` (Mod-SpaMo: `mod-spamo-pjm-scratch-si.yaml`) | same | `spamo-pjm-scratch-si`, `mod-spamo-pjm-scratch-si` |
+
+`run_phoenix_si.sh` in the patch is the script that ran the SI chain (SpaMo SI training, its test, Mod-SpaMo SI training and test) on our machine; it uses our directory layout (the run names match the log folders in `results/spamo/` on Hugging Face), so read it as a record of the four commands above. BLEURT-20 comes from `scripts/compute_bleurt.py <test_outputs.txt>`.
 
 ## Upstream
 
@@ -102,8 +116,8 @@ Original instructions for Phoenix-2014T, CSL-Daily and How2Sign (feature extract
 
 ## License
 
-Our changes are under the MIT licence; the upstream code is not (see `LICENSE`). The upstream repository has no licence. Upstream terms must be respected: check [eddie-euijun-hwang/SpaMo](https://github.com/eddie-euijun-hwang/SpaMo) before reuse. The PJM Corpus data is non-commercial only, and Flan-T5, CLIP and VideoMAE have their own licences.
+Our changes are under the MIT licence; the upstream code is not (see `LICENSE`). The upstream repository has no licence. Upstream terms must be respected: check [eddie-euijun-hwang/SpaMo](https://github.com/eddie-euijun-hwang/SpaMo) before reuse. The PJM Corpus data is licensed under CC BY-SA 4.0, and Flan-T5, CLIP and VideoMAE have their own licences.
 
 ## Authors
 
-Wojciech Sieńko and Rostyslav Kovalenko, PJATK engineering thesis, supervised by dr Albert Śledzianowski, MBA.
+[Wojciech Sieńko](https://www.linkedin.com/in/wojciech-sie%C5%84ko/) and [Rostyslav Kovalenko](https://www.linkedin.com/in/rost-koff/), PJATK engineering thesis, supervised by dr Albert Śledzianowski, MBA.
