@@ -2,7 +2,7 @@
 
 Fork of [SpaMo](https://github.com/eddie-euijun-hwang/SpaMo) (Hwang et al., NAACL 2025, [paper](https://aclanthology.org/2025.naacl-long.197.pdf)), a gloss-free sign language translation model that feeds spatial features (CLIP ViT) and motion features (VideoMAE) into an LLM (Flan-T5-XL with LoRA). We adapted it to translate Polish Sign Language (PJM) into English and added a four-stream variant, Mod-SpaMo. The method and original code are the work of the SpaMo authors; please cite their paper (see Citation).
 
-Part of CrocoSign, our PJATK engineering thesis. All repositories are under [github.com/crocosign](https://github.com/crocosign), project site https://crocosign.github.io:
+Part of CrocoSign, our PJATK engineering thesis. All repositories are under [github.com/crocosign](https://github.com/crocosign), project site https://crocosign.pl:
 
 CrocoSign (data preparation) -> SpaMo-PJM / Uni-Sign-PJM (training) -> pjm-models (inference) -> croco-sign-backend / croco-sign-frontend (app).
 
